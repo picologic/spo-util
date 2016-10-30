@@ -25,18 +25,62 @@ namespace SPOUtil.Lists
         }
 
         public void ImportItems(MutableDataTable data, IDictionary<string, string> mapping = null) {
+            var fields = _list.Fields;
+            _ctx.Load(fields);
+            _ctx.ExecuteQuery();
+
+            var fieldMap = data.ColumnNames.Where(x => !string.IsNullOrEmpty(x)).ToDictionary(x => x, x => {
+                var fieldTitle = x;
+                if (mapping != null && mapping.ContainsKey(fieldTitle)) {
+                    fieldTitle = mapping[fieldTitle];
+                }
+
+                var field = fields.Where(f => f.Title == fieldTitle || f.InternalName == fieldTitle).FirstOrDefault();
+                if (field == null)
+                    return "";
+
+                return field.InternalName;
+            });
+
             foreach (var row in data.Rows) {
                 var itemCreateInfo = new ListItemCreationInformation();
                 var item = _list.AddItem(itemCreateInfo);
 
-                foreach (var colname in data.ColumnNames) {
-                    var fieldName = colname;
-                    if (mapping != null && mapping.ContainsKey(colname))
-                        fieldName = mapping[colname];
+                foreach (var colname in fieldMap.Keys) {
+                    var fieldName = fieldMap[colname];
+                    if (fieldName == "")    // if empty, it doesn't exist in target list so skip
+                        continue;
 
                     var val = row.GetValueOrEmpty(colname);
                     if (!string.IsNullOrWhiteSpace(val)) {
-                        item[fieldName] = val;
+                        // check if we need to convert value
+                        var field = fields.Where(x => x.InternalName == fieldName).First();
+                        switch (field.FieldTypeKind) {
+                            case FieldType.DateTime:
+                                DateTime dtVal;
+                                if (!DateTime.TryParse(val, out dtVal)) {
+                                    double dblVal;
+                                    if (double.TryParse(val, out dblVal)) {
+                                        dtVal = DateTime.FromOADate(dblVal);
+                                    } else {
+                                        throw new Exception("Could not parse " + val + " as DateTime");
+                                    }
+                                }
+
+                                item[fieldName] = dtVal;
+                                break;
+                            case FieldType.URL:
+                                if (!val.StartsWith("http://", StringComparison.InvariantCultureIgnoreCase) &&
+                                    !val.StartsWith("https://", StringComparison.InvariantCultureIgnoreCase)) {
+                                    val = "http://" + val;
+                                }
+                                item[fieldName] = val;
+                                break;
+                            default:
+                                item[fieldName] = val;
+                                break;
+                        }
+                        
                     }
                 }
 

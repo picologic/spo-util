@@ -2,6 +2,8 @@
 using DataAccess;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace SPOUtil.Lists
 {
@@ -9,14 +11,20 @@ namespace SPOUtil.Lists
     {
         public int ImportListData(ListImportOptions opts) {
             try {
-                // parse csv
-                var data = DataTable.New.ReadCsv(opts.FilePath);
+                // parse data
+                MutableDataTable data;
+                if (opts.FilePath.EndsWith(".xlsx")) {
+                    data = DataTable.New.ReadExcel(opts.FilePath);
+                } else {
+                    data = DataTable.New.ReadCsv(opts.FilePath);
+                }
 
                 // load mapping
                 IDictionary<string, string> mapping = null;
                 if (string.IsNullOrWhiteSpace(opts.MappingFilePath) == false) {
-                    mapping = new Dictionary<string, string>();
                     // load it
+                    var lines = File.ReadAllLines(opts.MappingFilePath);
+                    mapping = lines.ToDictionary(x => x.Split(':')[0], x => x.Split(':')[1]);
                 }
 
                 // initialize context
