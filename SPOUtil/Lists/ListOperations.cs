@@ -10,6 +10,14 @@ namespace SPOUtil.Lists
     public class ListOperations : OperationBase
     {
         public int ImportListData(ListImportOptions opts) {
+            return doImport(opts, (mgr, data, mapping, defaults) => mgr.ImportItems(data, mapping, defaults));
+        }
+
+        public int UpdateListData(ListUpdateOptions opts) {
+            return doImport(opts, (mgr, data, mapping, defaults) => mgr.UpdateItems(data, mapping, defaults, opts.IDField));
+        }
+
+        private int doImport(ListImportOptions opts, Action<ListManager, MutableDataTable, IDictionary<string, string>, IDictionary<string, string>> importAction) {
             try {
                 // parse data
                 MutableDataTable data;
@@ -19,18 +27,25 @@ namespace SPOUtil.Lists
                     data = DataTable.New.ReadCsv(opts.FilePath);
                 }
 
-                // load mapping
-                IDictionary<string, string> mapping = null;
-                if (string.IsNullOrWhiteSpace(opts.MappingFilePath) == false) {
-                    // load it
-                    var lines = File.ReadAllLines(opts.MappingFilePath);
-                    mapping = lines.ToDictionary(x => x.Split(':')[0], x => x.Split(':')[1]);
-                }
+                Func<string, IDictionary<string, string>> loadSuppliment = (path) => {
+                    IDictionary<string, string> dic = null;
+                    if (string.IsNullOrWhiteSpace(path) == false) {
+                        // load it
+                        var lines = File.ReadAllLines(path);
+                        dic = lines.Where(x => !string.IsNullOrWhiteSpace(x))
+                                   .ToDictionary(x => x.Split(':')[0], x => x.Split(':')[1]);
+                    }
+                    return dic;
+                };
+
+                // load mapping and defaults
+                var mapping = loadSuppliment(opts.MappingFilePath);
+                var defaults = loadSuppliment(opts.DefaultFilePath);
 
                 // initialize context
                 WithContext(opts, ctx => {
                     var mgr = new ListManager(ctx, opts.List);
-                    mgr.ImportItems(data, mapping);
+                    importAction(mgr, data, mapping, defaults);
                 });
 
             } catch (Exception ex) {
@@ -59,23 +74,35 @@ namespace SPOUtil.Lists
         }
     }
 
-    [Verb("import-list", HelpText = "Import records from a csv file into a SharePoint list")]
-    public class ListImportOptions : SPOOptions
+    [Verb("import-list", HelpText = "Import records from a csv or xslx file into a SharePoint list")]
+    public class ListImportOptions : ListOptions
     {
         [Option('f', "file", Required = true, HelpText = "Data file containing data to import.")]
         public string FilePath { get; set; }
 
-        [Option('l', "list", Required = true, HelpText = "List to import to.")]
-        public string List { get; set; }
-
         [Option('m', "map", Required = false, HelpText = "File containing CSV to List column mapping. If not provided assume 1:1 match")]
         public string MappingFilePath { get; set; }
+
+        [Option('d', "defaults", Required = false, HelpText = "File containing default values for columns not contained in data file")]
+        public string DefaultFilePath { get; set; }
+    }
+
+    [Verb("update-list", HelpText = "Update items in a SharePoint list from a csv or xlsx file")]
+    public class ListUpdateOptions : ListImportOptions
+    {
+        [Option('i', "idfield", Required = false, HelpText = "Field to use as the list item ID. If not provided ID or Title will be used by default")]
+        public string IDField { get; set; }
     }
 
     [Verb("clear-list", HelpText = "Remove all items from a SharePoint list.")]
-    public class ListClearOptions : SPOOptions
+    public class ListClearOptions : ListOptions
     {
-        [Option('l', "list", Required = false, HelpText = "List to remove items from")]
+        
+    }
+
+    public abstract class ListOptions : SPOOptions
+    {
+        [Option('l', "list", Required = false, HelpText = "List to target")]
         public string List { get; set; }
     }
 }
