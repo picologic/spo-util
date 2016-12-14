@@ -1,6 +1,7 @@
 ﻿using CommandLine;
 using DataAccess;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 
 namespace SPOUtil.ManagedMetadata
@@ -31,6 +32,33 @@ namespace SPOUtil.ManagedMetadata
                     mgr.ImportTerms(opts.TermGroup, opts.TermSet, terms);
                 });
 
+            } catch (Exception ex) {
+                Console.WriteLine("An error occurred");
+                Console.WriteLine(ex.Message);
+                return 1;
+            }
+            return 0;
+        }
+
+        public int ExportTerms(MMSExportOptions opts) {
+            try {
+                IDictionary<string, string[]> terms = null;
+                WithContext(opts, ctx => {
+                    var mgr = new MetadataManager(ctx, opts.TermStore);
+                    terms = mgr.ExportTerms(opts.TermGroup, opts.TermSet);
+                });
+
+                var flat = terms.SelectMany(kvp => {
+                    return kvp.Value.Select(t => {
+                        return new {
+                            TermSet = kvp.Key,
+                            Term = t
+                        };
+                    });
+                });
+
+                DataTable.New.FromEnumerable(flat).SaveCSV(opts.FilePath);
+                
             } catch (Exception ex) {
                 Console.WriteLine("An error occurred");
                 Console.WriteLine(ex.Message);
@@ -81,6 +109,22 @@ namespace SPOUtil.ManagedMetadata
         public string TermGroup { get; set; }
 
         [Option('s', "termSet", Required = true, HelpText = "Term set to clear.")]
+        public string TermSet { get; set; }
+    }
+
+    [Verb("export-terms", HelpText = "Export all terms to a csv file")]
+    public class MMSExportOptions : SPOOptions
+    {
+        [Option('f', "file", Required = true, HelpText = "File to write output to")]
+        public string FilePath { get; set; }
+
+        [Option('t', "termStore", Required = false, HelpText = "Term store to export from. If empty the default site collection term store will be used")]
+        public string TermStore { get; set; }
+
+        [Option('g', "termGroup", Required = true, HelpText = "Term group containing term sets to export")]
+        public string TermGroup { get; set; }
+
+        [Option('s', "termSet", Required = false, HelpText = "Term set to export. If empty all term sets in the term group will be exported")]
         public string TermSet { get; set; }
     }
 }

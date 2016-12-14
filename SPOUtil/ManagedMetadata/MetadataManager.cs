@@ -55,6 +55,27 @@ namespace SPOUtil.ManagedMetadata
             }
         }
 
+        public IDictionary<string, string[]> ExportTerms(string termGroup, string termSet) {
+            var sets = new List<string>();
+            if (!string.IsNullOrEmpty(termSet)) {
+                sets.Add(termSet);
+            } else {
+                sets = getTermSets(termGroup).ToList();
+            }
+
+            var results = new Dictionary<string, string[]>();
+            foreach (var set in sets) {
+                var ts = getTermSet(termGroup, set);
+                var terms = ts.Terms;
+                _ctx.Load(terms);
+                _ctx.ExecuteQuery();
+
+                results.Add(set, terms.Select(x => x.Name).ToArray());
+            }
+
+            return results;
+        }
+
         public void ClearTerms(string termGroup, string termSet) {
             var set = getTermSet(termGroup, termSet);
             var terms = set.GetAllTerms();
@@ -90,6 +111,23 @@ namespace SPOUtil.ManagedMetadata
             }
 
             return set;
+        }
+
+        private IEnumerable<string> getTermSets(string termGroup) {
+            // get group
+            var groups = _ts.Groups;
+            _ctx.Load(groups);
+            _ctx.ExecuteQuery();
+
+            var group = groups.FirstOrDefault(x => x.Name == termGroup);
+            if (group == null) {
+                throw new Exception("Could not find term group " + termGroup);
+            }
+            var sets = group.TermSets;
+            _ctx.Load(sets);
+            _ctx.ExecuteQuery();
+
+            return sets.Select(x => x.Name).ToList();
         }
 
         private IList<string> loadAllTermNamesInSet(TermSet set) {
